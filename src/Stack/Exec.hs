@@ -25,8 +25,9 @@ import           System.Process.Run (callProcess, callProcessObserveStdout, Cmd(
 #ifdef WINDOWS
 import           System.Process.Read (EnvOverride)
 #else
-import           System.Posix.Process (executeFile)
+import           System.Posix.Process (executeFile, getProcessID)
 import           System.Process.Read (EnvOverride, envHelper, preProcess)
+import qualified Stack.PID1 as PID1
 #endif
 
 -- | Default @EnvSettings@ which includes locals and GHC_PACKAGE_PATH
@@ -62,8 +63,20 @@ exec = execSpawn
 #else
 exec menv cmd0 args = do
     cmd <- preProcess Nothing menv cmd0
-    $withProcessTimeLog cmd args $
-        liftIO $ executeFile cmd True args (envHelper menv)
+    myPid <- liftIO getProcessID
+    $withProcessTimeLog cmd args $ liftIO $
+        if myPid == 1
+            -- When running as PID 1, we want to handle signals slightly
+            -- differently and make sure to reap orphans. This is commonly
+            -- needed for running inside a Docker container. For more
+            -- information, see:
+            -- https://blog.phusion.nl/2015/01/20/docker-and-the-pid-1-zombie-reaping-problem/.
+            then PID1.run cmd args (envHelper menv)
+            -- Not running as PID 1, so nothing special needed. Use executeFile
+            -- so that we completely overwrite our current process with the
+            -- requested process, removing our stack process from memory and
+            -- ensuring signals get sent to the right place.
+            else executeFile cmd True args (envHelper menv)
 #endif
 
 -- | Like 'exec', but does not use 'execv' on non-windows. This way, there
