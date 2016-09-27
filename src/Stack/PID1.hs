@@ -104,7 +104,10 @@ killAllChildren = do
     -- putStrLn "Sending all processes the TERM signal"
 
     -- Send all children processes the TERM signal
-    signalProcess sigTERM (-1)
+    signalProcess sigTERM (-1) `catch` \e ->
+        if isDoesNotExistError e
+            then return ()
+            else throwIO e
 
     -- Wait for five seconds. We don't need to put in any logic about
     -- whether there are still child processes; if all children have
@@ -114,7 +117,10 @@ killAllChildren = do
 
     -- OK, some children didn't exit. Now time to get serious!
     -- putStrLn "Sending all processes the KILL signal"
-    signalProcess sigKILL (-1)
+    signalProcess sigKILL (-1) `catch` \e ->
+        if isDoesNotExistError e
+            then return ()
+            else throwIO e
 
 toExitCode :: ProcessStatus -> ExitCode
 toExitCode (Exited ec) = ec
